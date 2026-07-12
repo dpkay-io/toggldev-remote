@@ -1,0 +1,33 @@
+{
+  "name": "toggldev-remote",
+  "version": "1.0.0",
+  "description": "MCP server and CLI for TogglDev Android App remote access",
+  "author": "dpkay <hello@dpkay.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dpkay-io/toggldev-remote"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "toggldev": "./build/cli/index.js",
+    "toggldev-mcp": "./build/mcp/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/mcp/index.js",
+    "cli": "node build/cli/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "bonjour-service": "^1.4.3",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.0"
+  }
+}
