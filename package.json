@@ -1,6 +1,6 @@
 {
   "name": "toggldev-remote",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server and CLI for TogglDev Android App remote access",
   "author": "dpkay <hello@dpkay.com>",
   "repository": {

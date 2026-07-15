@@ -18,6 +18,25 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
+    instructions: `You have access to toggldev-remote, which controls Android Developer Options over the network via the TogglDev companion app.
+
+USE THIS WHEN:
+- You need to connect to an Android device (e.g. for ADB, wireless debugging, app deployment) but no device is connected — call discover_devices to find one on the network.
+- You need to toggle Developer Options settings (wireless debugging, show touches, animation scales, etc.) on an Android device.
+- You need wireless ADB connection info to connect to a device.
+- Any task involving Android development where a device setting needs to change or a device needs to be reached.
+
+WORKFLOW:
+1. When a task requires an Android device, first check if one is already connected (e.g. via adb devices).
+2. If no device is found, call discover_devices to find TogglDev-enabled devices on the local network.
+3. If a device is found but not yet paired, call pair_device with the device's host and port. Ask the user for the 6-digit pairing code shown in the TogglDev app on their phone.
+4. Once paired, use get_status, toggle_setting, set_setting, or get_wireless_debug_info as needed.
+5. To enable wireless ADB: call toggle_setting with key "adb_wifi_enabled" and enabled true, then call get_wireless_debug_info to get the IP:port for "adb connect".
+
+IMPORTANT:
+- Pairing is persistent — once paired, the device stays paired across sessions. Only ask for a pairing code if pair_device is needed.
+- If an API call returns a 401 error, the pairing token has expired. Re-pair by asking the user for a new code.
+- Discovery uses mDNS and only works on the local network (not over Tailscale/VPN — use direct IP for remote devices).`,
   }
 );
 
