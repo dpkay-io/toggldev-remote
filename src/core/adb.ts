@@ -46,6 +46,9 @@ function runAdb(args: string[], timeoutMs = 15000): Promise<{ code: number; stdo
   });
 }
 
+// What the phone reports ends up as an adb argument, so accept only an IP literal (never something adb could read as an option).
+const IP_LITERAL = /^[0-9A-Fa-f:.]+$/;
+
 /** Parse `adb mdns services`: "<name>\t<service type>\t<host>:<port>" per line. */
 export function parseMdnsServices(output: string): AdbService[] {
   const services: AdbService[] = [];
@@ -128,7 +131,7 @@ export async function connectAdb(device?: string, options: ConnectOptions = {}):
   let lastState = "";
   for (let i = 0; i < attempts; i++) {
     const info = await api.getWirelessDebugInfo(device);
-    if (info?.ip && info?.port) {
+    if (info?.ip && info?.port && IP_LITERAL.test(String(info.ip)) && Number.isInteger(info.port)) {
       const { candidates, warnings: w } = chooseAdbPorts(info.ip, info.port, await mdnsServices());
       for (const message of w) if (!warnings.includes(message)) warnings.push(message);
       for (const { port, source } of candidates) {
@@ -169,7 +172,7 @@ export async function disconnectAdb(device?: string) {
   const disconnected: string[] = [];
   if (status.adb_wifi_enabled === true) {
     const info = await api.getWirelessDebugInfo(device);
-    if (info?.ip) {
+    if (info?.ip && IP_LITERAL.test(String(info.ip))) {
       const ports = new Set<number>(info.port ? [info.port] : []);
       for (const s of await mdnsServices()) if (s.service === CONNECT_SERVICE && s.host === info.ip) ports.add(s.port);
       for (const port of ports) {

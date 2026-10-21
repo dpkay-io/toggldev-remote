@@ -129,6 +129,27 @@ describe("saveConfig failure", () => {
   });
 });
 
+describe.skipIf(process.platform === "win32")("an address the phone reports that is not an IP", () => {
+  it("never reaches adb", async () => {
+    const bin = path.join(home, "adb");
+    const log = path.join(home, "calls.log");
+    fs.writeFileSync(bin, `#!/usr/bin/env node
+require("fs").appendFileSync(${JSON.stringify(log)}, process.argv.slice(2).join(" ") + "\n");
+console.log("List of discovered mdns services");
+`, { mode: 0o755 });
+    process.env.ADB = bin;
+    const phone = await statefulPhone({ adb_wifi_enabled: true }, {
+      wirelessDebug: () => ({ enabled: true, ip: "--help", port: 5555 })
+    });
+    saveConfig(cfg("t", phone.port));
+    await expect(connectAdb(undefined, { attempts: 2, delayMs: 5 })).rejects.toThrow(/did not succeed/);
+    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
+    expect(calls).not.toContain("--help");
+    expect(calls).not.toMatch(/^connect /m);
+    await phone.close();
+  });
+});
+
 describe.skipIf(process.platform === "win32")("a stale adb entry", () => {
   it("is disconnected when adb reports it offline", async () => {
     const bin = path.join(home, "adb");

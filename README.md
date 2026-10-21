@@ -114,7 +114,7 @@ toggldev devices --check    # also ask each phone whether it is reachable
 toggldev -d fold status
 ```
 
-Named pairings live in `~/.toggldev/devices/<name>/config.json`. Without `--device`, commands use `~/.toggldev/config.json`, or `$TOGGLDEV_DEVICE`, or the only named phone if there is just one. With several named phones and no default, the command stops and asks which one rather than guess. `TOGGLDEV_CONFIG_DIR` (one directory per pairing) and `TOGGLDEV_DEVICES_DIR` (where named pairings live) override the locations.
+Named pairings live in `~/.toggldev/devices/<name>/config.json`. Without `--device`, commands use `$TOGGLDEV_CONFIG_DIR` if set, else `$TOGGLDEV_DEVICE` if set, else `~/.toggldev/config.json`, else the only named phone if there is just one. `--device default` means the `~/.toggldev/config.json` pairing. With several named phones and no default, the command stops and asks which one rather than guess. `TOGGLDEV_CONFIG_DIR` (one directory per pairing) and `TOGGLDEV_DEVICES_DIR` (where named pairings live) override the locations.
 
 If a phone's IP changes (DHCP), run `toggldev -d <name> relocate`. The app announces every phone as plain "TogglDev", so `relocate` offers the saved token to each phone it finds and keeps the one that accepts it. That sends the token over plain HTTP to every TogglDev phone on the network, so it only runs when you ask, on a network you trust.
 
