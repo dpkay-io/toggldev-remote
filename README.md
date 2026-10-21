@@ -237,3 +237,16 @@ Once paired, all commands work from any network. The Tailscale IP stays stable a
 
 > **Note:** `toggldev discover` uses mDNS, which doesn't work over Tailscale. Use the Tailscale IP directly for pairing.
 
+---
+
+## Development
+
+```bash
+npm install
+npm run build
+npm test            # unit tests against a fake phone, a fake adb, and responses captured from real phones
+npm run live        # read-only check of this build against your paired phones
+```
+
+- `npm run live -- --same-value-writes --connect-adb` also writes each setting's current value (expecting `verified: true`) and runs `connect-adb` plus a shell command. `--disconnect-adb` turns wireless debugging off, so it is never implied.
+- `tests/fixtures/` holds `/status` and error responses captured from released TogglDev builds, with IPs replaced by documentation addresses and no token. After a new app release, add its fixture with `node scripts/capture-fixtures.mjs <device> --app-version <x.y>`; the compatibility tests then run against it.

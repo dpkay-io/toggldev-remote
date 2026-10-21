@@ -17,7 +17,8 @@
     "build": "tsc",
     "start": "node build/mcp/index.js",
     "cli": "node build/cli/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "live": "node scripts/live-check.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

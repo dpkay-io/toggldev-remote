@@ -1,0 +1,50 @@
+{
+  "app_version": "2.94",
+  "captured": "2026-10-21",
+  "status": {
+    "developer_options_enabled": true,
+    "adb_enabled": true,
+    "adb_wifi_enabled": true,
+    "window_animation_scale": 0.5,
+    "transition_animation_scale": 0.5,
+    "animator_duration_scale": 0.5,
+    "stay_on_while_plugged_in": 0,
+    "always_finish_activities": false,
+    "force_rtl": false,
+    "wait_for_debugger": false,
+    "debug_app": "",
+    "force_resizable_activities": true,
+    "debug_view_attributes": false,
+    "mobile_data_always_on": false,
+    "freeform_windows": true,
+    "overlay_display_devices": "",
+    "demo_mode": false,
+    "wireless_debug_ip": "192.0.2.10",
+    "wireless_debug_port": 40327
+  },
+  "wireless_debug_info": {
+    "enabled": true,
+    "ip": "192.0.2.10",
+    "port": 40327
+  },
+  "errors": {
+    "bad_token": {
+      "status": 401,
+      "body": {
+        "error": "Invalid token"
+      }
+    },
+    "unknown_key": {
+      "status": 400,
+      "body": {
+        "error": "Unknown key: not_a_key"
+      }
+    },
+    "missing_enabled": {
+      "status": 400,
+      "body": {
+        "error": "Missing 'enabled' field"
+      }
+    }
+  }
+}
