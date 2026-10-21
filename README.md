@@ -97,7 +97,13 @@ toggldev discover --timeout 10
 toggldev pair --host <ip> --port <port> --code <code>
 ```
 
-Saves authentication to `~/.toggldev/config.json`.
+Saves authentication to `~/.toggldev/config.json` (readable only by you where the OS supports it).
+
+- The file holds a bearer token that controls the phone. Don't commit or share it.
+- A phone keeps **one** token: pairing from a second machine invalidates the first machine's token (you will see an "Authentication failed" error). Copy the config file between machines instead of pairing twice.
+- Traffic to the phone is plain HTTP. Use it on a network you trust, or over Tailscale (see [Remote Access](#remote-access)).
+- Set `TOGGLDEV_CONFIG_DIR` to keep a separate pairing per device (one directory each).
+- Requests time out after 8 seconds; set `TOGGLDEV_TIMEOUT_MS` to change that.
 
 ### Get device status
 

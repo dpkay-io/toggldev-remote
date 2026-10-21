@@ -22,6 +22,7 @@ describe("TogglDev API Core", () => {
     }
     delete process.env.TOGGLDEV_CONFIG_DIR;
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("should fail to get status if not paired", async () => {
@@ -46,7 +47,7 @@ describe("TogglDev API Core", () => {
       return { ok: false, status: 404, text: async () => "Not found" };
     });
 
-    global.fetch = mockFetch as any;
+    vi.stubGlobal("fetch", mockFetch);
 
     const result = await api.pairDevice("192.168.1.100", 8734, "123456");
     expect(result).toBe("Paired successfully. Configuration saved.");

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { api } from "../core/api.js";
+import { parseBoolean, packageVersion } from "../core/util.js";
 
 const program = new Command();
 
 program
   .name("toggldev")
   .description("CLI to interact with TogglDev Android App remote access")
-  .version("1.0.0");
+  .version(packageVersion());
 
 program
   .command("discover")
@@ -59,7 +60,7 @@ program
   .requiredOption("--enabled <boolean>", "true or false")
   .action(async (options) => {
     try {
-      const enabled = options.enabled === "true";
+      const enabled = parseBoolean(options.enabled);
       const result = await api.toggleSetting(options.key, enabled);
       console.log(JSON.stringify(result, null, 2));
     } catch (e: any) {

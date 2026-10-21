@@ -8,11 +8,12 @@ import {
   McpError
 } from "@modelcontextprotocol/sdk/types.js";
 import { api } from "../core/api.js";
+import { parseBoolean, packageVersion } from "../core/util.js";
 
 const server = new Server(
   {
     name: "toggldev-remote-mcp",
-    version: "1.0.0",
+    version: packageVersion(),
   },
   {
     capabilities: {
@@ -155,7 +156,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (request.params.name === "toggle_setting") {
       const { key, enabled } = request.params.arguments as { key: string; enabled: boolean };
-      const result = await api.toggleSetting(key, enabled);
+      const result = await api.toggleSetting(key, parseBoolean(enabled));
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
 
