@@ -8,7 +8,8 @@ import {
   McpError
 } from "@modelcontextprotocol/sdk/types.js";
 import { api } from "../core/api.js";
-import { parseBoolean, packageVersion } from "../core/util.js";
+import { connectAdb, disconnectAdb } from "../core/adb.js";
+import { parseBoolean, packageVersion, KNOWN_TOGGLE_KEYS, KNOWN_SET_KEYS } from "../core/util.js";
 
 const server = new Server(
   {
@@ -19,31 +20,50 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
-    instructions: `You have access to toggldev-remote, which controls Android Developer Options over the network via the TogglDev companion app.
+    instructions: `You have access to toggldev-remote, which controls Android Developer Options and wireless ADB over the network via the TogglDev companion app.
 
 USE THIS WHEN:
-- You need to connect to an Android device (e.g. for ADB, wireless debugging, app deployment) but no device is connected — call discover_devices to find one on the network.
-- You need to toggle Developer Options settings (wireless debugging, show touches, animation scales, etc.) on an Android device.
-- You need wireless ADB connection info to connect to a device.
-- Any task involving Android development where a device setting needs to change or a device needs to be reached.
+- You need to connect to an Android device (e.g. for ADB, app deployment, tests) and no device is connected.
+- You need to change a Developer Options setting (wireless debugging, animation scales, stay awake, etc.) on an Android device.
 
 WORKFLOW:
-1. When a task requires an Android device, first check if one is already connected (e.g. via adb devices).
-2. If no device is found, call discover_devices to find TogglDev-enabled devices on the local network.
-3. If a device is found but not yet paired, call pair_device with the device's host and port. Ask the user for the 6-digit pairing code shown in the TogglDev app on their phone.
-4. Once paired, use get_status, toggle_setting, set_setting, or get_wireless_debug_info as needed.
-5. To enable wireless ADB: call toggle_setting with key "adb_wifi_enabled" and enabled true, then call get_wireless_debug_info to get the IP:port for "adb connect".
+1. Call list_devices (check: true) to see the paired phones and which are reachable. Pass the phone's name as "device" to every other tool; with several phones paired, leaving it out can act on the wrong one.
+2. To run adb commands, call connect_adb and then use the serial it returns: adb -s <serial> ... It turns wireless debugging on if needed, picks the right port and confirms adb can talk to the phone. The port changes whenever adb restarts on the phone, so call connect_adb again instead of reusing an old serial. Do not build the address from get_wireless_debug_info: the app can report another phone's port.
+3. When finished, or if the user asks, call disconnect_adb to turn wireless debugging off.
+4. toggle_setting and set_setting check the phone's status afterwards and fail if the change did not take. verified: true means confirmed; verified: null means the phone does not report that setting, so it is unconfirmed.
+5. A phone that is not paired: call discover_devices (mDNS, same network only), then pair_device with its host, a name for it, and the 6-digit code from the TogglDev app. Ask the user for the code.
 
 IMPORTANT:
-- Pairing is persistent — once paired, the device stays paired across sessions. Only ask for a pairing code if pair_device is needed.
-- If an API call returns a 401 error, the pairing token has expired. Re-pair by asking the user for a new code.
-- Discovery uses mDNS and only works on the local network (not over Tailscale/VPN — use direct IP for remote devices).`,
+- Pairing is persistent. Only ask for a code when pair_device is needed.
+- A phone keeps ONE pairing token. If another computer paired with it since, you get "Authentication failed": pair again, and tell the user that the other computer's pairing stopped working.
+- Pairing is rate-limited (a few wrong codes, then a lockout of about five minutes). Never guess codes.
+- Discovery uses mDNS and only works on the local network (not over Tailscale/VPN); for remote phones pair using the direct or Tailscale IP.`,
   }
 );
+
+const deviceProperty = {
+  device: {
+    type: "string",
+    description: "Name of the paired phone (see list_devices). Omit only when a single phone is paired."
+  }
+};
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
+      {
+        name: "list_devices",
+        description: "List the paired phones (names and addresses, never tokens). With check, also report which are reachable now.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            check: {
+              type: "boolean",
+              description: "Also ask each phone for its status to see whether it is reachable (default: false)"
+            }
+          }
+        }
+      },
       {
         name: "discover_devices",
         description: "Discover TogglDev devices on the local network.",
@@ -59,7 +79,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "pair_device",
-        description: "Pair with a TogglDev device using the code from the app.",
+        description: "Pair with a TogglDev device using the code from the app. Give it a name to keep several phones.",
         inputSchema: {
           type: "object",
           properties: {
@@ -74,9 +94,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             code: {
               type: "string",
               description: "The pairing code displayed on the app"
+            },
+            device: {
+              type: "string",
+              description: "Name to save this phone under, e.g. \"pixel\" (letters, digits, dot, dash, underscore)"
             }
           },
-          required: ["host", "port", "code"]
+          required: ["host", "code"]
         }
       },
       {
@@ -84,18 +108,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: "Get the current developer settings status from the paired device.",
         inputSchema: {
           type: "object",
-          properties: {}
+          properties: { ...deviceProperty }
         }
       },
       {
         name: "toggle_setting",
-        description: "Toggle a developer setting on the paired device.",
+        description: "Switch a boolean developer setting on or off, then confirm through the phone's status that it took effect (fails if it did not).",
         inputSchema: {
           type: "object",
           properties: {
+            ...deviceProperty,
             key: {
               type: "string",
-              description: "The setting key to toggle (e.g. adb_wifi_enabled, show_touches)"
+              description: `The setting key. Known keys: ${KNOWN_TOGGLE_KEYS.join(", ")}. The phone rejects unknown keys.`
             },
             enabled: {
               type: "boolean",
@@ -107,13 +132,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "set_setting",
-        description: "Set a specific value for a developer setting on the paired device.",
+        description: "Set a value for a developer setting, then confirm it through the phone's status where the phone reports it.",
         inputSchema: {
           type: "object",
           properties: {
+            ...deviceProperty,
             key: {
               type: "string",
-              description: "The setting key to set (e.g. window_animation_scale)"
+              description: `The setting key. Known keys: ${KNOWN_SET_KEYS.join(", ")}. The phone rejects unknown keys.`
             },
             value: {
               type: "string",
@@ -124,54 +150,64 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: "get_wireless_debug_info",
-        description: "Get wireless debugging connection info (IP and Port) from the paired device.",
+        name: "connect_adb",
+        description: "Turn on wireless debugging if needed and 'adb connect' to the phone. Returns the serial to use as 'adb -s <serial>'. Call again if the connection drops: the port changes when adb restarts.",
         inputSchema: {
           type: "object",
-          properties: {}
+          properties: { ...deviceProperty }
+        }
+      },
+      {
+        name: "disconnect_adb",
+        description: "Disconnect adb from the phone and turn wireless debugging off.",
+        inputSchema: {
+          type: "object",
+          properties: { ...deviceProperty }
+        }
+      },
+      {
+        name: "get_wireless_debug_info",
+        description: "Raw wireless debugging IP and port as the app reports them. The port can be stale or belong to another phone; use connect_adb to actually connect.",
+        inputSchema: {
+          type: "object",
+          properties: { ...deviceProperty }
         }
       }
     ]
   };
 });
 
+const text = (value: unknown) => ({
+  content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }]
+});
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
-    if (request.params.name === "discover_devices") {
-      const timeoutSeconds = (request.params.arguments?.timeoutSeconds as number) || 5;
-      const devices = await api.discoverDevices(timeoutSeconds);
-      return { content: [{ type: "text", text: JSON.stringify({ devices }, null, 2) }] };
-    }
+    const args = (request.params.arguments ?? {}) as Record<string, any>;
+    const device: string | undefined = args.device || undefined;
 
-    if (request.params.name === "pair_device") {
-      const { host, port, code } = request.params.arguments as { host: string; port: number; code: string };
-      const msg = await api.pairDevice(host, port, code);
-      return { content: [{ type: "text", text: msg }] };
+    switch (request.params.name) {
+      case "list_devices":
+        return text({ devices: await api.listDevices(args.check === true) });
+      case "discover_devices":
+        return text({ devices: await api.discoverDevices(args.timeoutSeconds || 5) });
+      case "pair_device":
+        return text(await api.pairDevice(args.host, args.port || 8734, args.code, device));
+      case "get_status":
+        return text(await api.getStatus(device));
+      case "toggle_setting":
+        return text(await api.toggleSetting(args.key, parseBoolean(args.enabled), device));
+      case "set_setting":
+        return text(await api.setSetting(args.key, args.value, device));
+      case "connect_adb":
+        return text(await connectAdb(device));
+      case "disconnect_adb":
+        return text(await disconnectAdb(device));
+      case "get_wireless_debug_info":
+        return text(await api.getWirelessDebugInfo(device));
+      default:
+        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
     }
-
-    if (request.params.name === "get_status") {
-      const status = await api.getStatus();
-      return { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] };
-    }
-
-    if (request.params.name === "toggle_setting") {
-      const { key, enabled } = request.params.arguments as { key: string; enabled: boolean };
-      const result = await api.toggleSetting(key, parseBoolean(enabled));
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-    }
-
-    if (request.params.name === "set_setting") {
-      const { key, value } = request.params.arguments as { key: string; value: string };
-      const result = await api.setSetting(key, value);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-    }
-
-    if (request.params.name === "get_wireless_debug_info") {
-      const info = await api.getWirelessDebugInfo();
-      return { content: [{ type: "text", text: JSON.stringify(info, null, 2) }] };
-    }
-
-    throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
   } catch (error: any) {
     if (error instanceof McpError) throw error;
     return {

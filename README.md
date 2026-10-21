@@ -70,14 +70,11 @@ toggldev discover
 # 2. Open the TogglDev app, note the 6-digit code, then pair
 toggldev pair --host 192.168.1.100 --port 8734 --code 123456
 
-# 3. Enable wireless debugging
-toggldev toggle --key adb_wifi_enabled --enabled true
+# 3. Turn on wireless debugging and connect ADB (prints the serial to use)
+toggldev connect-adb
 
-# 4. Get the ADB connection info
-toggldev wireless-debug-info
-
-# 5. Connect ADB
-adb connect <ip>:<port>
+# 4. Use it
+adb -s <serial> devices
 ```
 
 ---
@@ -102,8 +99,24 @@ Saves authentication to `~/.toggldev/config.json` (readable only by you where th
 - The file holds a bearer token that controls the phone. Don't commit or share it.
 - A phone keeps **one** token: pairing from a second machine invalidates the first machine's token (you will see an "Authentication failed" error). Copy the config file between machines instead of pairing twice.
 - Traffic to the phone is plain HTTP. Use it on a network you trust, or over Tailscale (see [Remote Access](#remote-access)).
-- Set `TOGGLDEV_CONFIG_DIR` to keep a separate pairing per device (one directory each).
 - Requests time out after 8 seconds; set `TOGGLDEV_TIMEOUT_MS` to change that.
+
+### Several phones
+
+Give each phone a name when you pair it, then pick it with `--device` (or `-d`) on any command:
+
+```bash
+toggldev pair --device fold --host <ip> --code <code>
+toggldev pair --device tablet --host <ip> --code <code>
+
+toggldev devices            # list paired phones (never shows tokens)
+toggldev devices --check    # also ask each phone whether it is reachable
+toggldev -d fold status
+```
+
+Named pairings live in `~/.toggldev/devices/<name>/config.json`. Without `--device`, commands use `~/.toggldev/config.json`, or `$TOGGLDEV_DEVICE`, or the only named phone if there is just one. With several named phones and no default, the command stops and asks which one rather than guess. `TOGGLDEV_CONFIG_DIR` (one directory per pairing) and `TOGGLDEV_DEVICES_DIR` (where named pairings live) override the locations.
+
+If a phone's IP changes (DHCP), run `toggldev -d <name> relocate`. The app announces every phone as plain "TogglDev", so `relocate` offers the saved token to each phone it finds and keeps the one that accepts it. That sends the token over plain HTTP to every TogglDev phone on the network, so it only runs when you ask, on a network you trust.
 
 ### Get device status
 
@@ -117,17 +130,35 @@ toggldev status
 toggldev toggle --key adb_wifi_enabled --enabled true
 ```
 
+The app replies "ok" without checking that Android applied the change, so the CLI reads the phone's status afterwards. The output has `"verified": true` when the new value is confirmed, `"verified": null` when the phone does not report that setting (unconfirmed), and the command fails when the value did not change.
+
+Toggle keys: `development_settings_enabled`, `adb_enabled`, `adb_wifi_enabled`, `stay_on_while_plugged_in`, `always_finish_activities`, `debug.force_rtl`, `wait_for_debugger`, `force_resizable_activities`, `debug_view_attributes`, `mobile_data_always_on`, `enable_freeform_support`, `sysui_tuner_demo_on`. The names `status` reports for four of them also work (`developer_options_enabled`, `force_rtl`, `freeform_windows`, `demo_mode`). The phone rejects unknown keys.
+
 ### Set a setting value
 
 ```bash
 toggldev set --key window_animation_scale --value 0.5
 ```
 
+Keys: `window_animation_scale`, `transition_animation_scale`, `animator_duration_scale`, `debug_app`, `overlay_display_devices`. The result is verified the same way.
+
+### Connect ADB over Wi-Fi
+
+```bash
+toggldev connect-adb          # turns wireless debugging on if needed, runs adb connect
+adb -s <serial> ...           # use the serial it prints
+toggldev disconnect-adb       # disconnects and turns wireless debugging off
+```
+
+The wireless debugging port changes whenever adb restarts on the phone, so `connect-adb` reads it fresh each time. The port the app reports can occasionally belong to another phone on the network, so it prefers the port adb itself finds for that phone's IP (via `adb mdns services`) and falls back to the app's port only if adb sees none. It confirms with `adb get-state` that the phone is really usable, and says so if this computer's adb key is not authorised. Set `ADB` to the adb binary if it is not on `PATH`.
+
 ### Get wireless debugging info
 
 ```bash
 toggldev wireless-debug-info
 ```
+
+Shows the IP and port exactly as the app reports them. Prefer `connect-adb`: this port can be stale or wrong.
 
 ---
 
@@ -176,12 +207,17 @@ toggldev-mcp
 
 | Tool | Description |
 |------|-------------|
+| `list_devices` | List paired phones; with `check`, which are reachable now |
 | `discover_devices` | Find TogglDev instances on the local network |
-| `pair_device` | Pair with a device using host, port, and pairing code |
+| `pair_device` | Pair with a device using host, pairing code and (optionally) a name |
 | `get_status` | Get current developer options status |
-| `toggle_setting` | Toggle a boolean setting (e.g. `adb_wifi_enabled`) |
-| `set_setting` | Set a value for a setting (e.g. `window_animation_scale` to `0.5`) |
-| `get_wireless_debug_info` | Get IP and port for wireless ADB connection |
+| `toggle_setting` | Toggle a boolean setting (e.g. `adb_wifi_enabled`) and confirm it took effect |
+| `set_setting` | Set a value for a setting (e.g. `window_animation_scale` to `0.5`) and confirm it |
+| `connect_adb` | Turn on wireless debugging if needed, `adb connect`, and return the serial |
+| `disconnect_adb` | Disconnect adb and turn wireless debugging off |
+| `get_wireless_debug_info` | Raw IP and port as the app reports them (use `connect_adb` to connect) |
+
+Every tool except `list_devices` and `discover_devices` takes an optional `device` name.
 
 ---
 

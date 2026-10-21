@@ -1,44 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import http from "node:http";
 import path from "node:path";
 import os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { AddressInfo } from "node:net";
+import { fileURLToPath } from "node:url";
 import { api } from "../src/core/api.js";
 import { getConfigPath, saveConfig, loadConfig } from "../src/core/config.js";
 import { parseBoolean, packageVersion } from "../src/core/util.js";
+import { fakePhone, json } from "./helpers.js";
 
 const run = promisify(execFile);
-const ROOT = path.resolve(import.meta.dirname, "..");
-
-type Handler = (req: http.IncomingMessage, body: string, res: http.ServerResponse) => void;
-
-/** A fake TogglDev phone: records requests and answers with whatever the test supplies. */
-async function fakePhone(handler: Handler) {
-  const requests: { method?: string; url?: string; auth?: string; body: string }[] = [];
-  const server = http.createServer((req, res) => {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", () => {
-      requests.push({ method: req.method, url: req.url, auth: req.headers.authorization, body });
-      handler(req, body, res);
-    });
-  });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const port = (server.address() as AddressInfo).port;
-  return {
-    port,
-    requests,
-    close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); })
-  };
-}
-
-const json = (res: http.ServerResponse, status: number, body: unknown) => {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(body));
-};
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 let dir: string;
 beforeEach(() => {
