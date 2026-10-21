@@ -40,7 +40,11 @@ program
   .requiredOption("--host <host>", "IP address of the device")
   .option("--port <port>", "Port of the device", "8734")
   .requiredOption("--code <code>", "Pairing code")
-  .action(run((options) => api.pairDevice(options.host, Number(options.port), options.code, device())));
+  .action(run((options) => {
+    const port = Number(options.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`Invalid port "${options.port}".`);
+    return api.pairDevice(options.host, port, options.code, device());
+  }));
 
 program
   .command("devices")
@@ -64,14 +68,16 @@ program
   .description(`Toggle a developer setting and confirm it took effect. Keys: ${KNOWN_TOGGLE_KEYS.join(", ")}`)
   .requiredOption("--key <key>", "Setting key to toggle")
   .requiredOption("--enabled <boolean>", "true or false")
-  .action(run((options) => api.toggleSetting(options.key, parseBoolean(options.enabled), device())));
+  .option("--no-verify", "Don't read the status back; print the app's reply as earlier versions did")
+  .action(run((options) => api.toggleSetting(options.key, parseBoolean(options.enabled), device(), { verify: options.verify })));
 
 program
   .command("set")
   .description(`Set a specific value for a developer setting. Keys: ${KNOWN_SET_KEYS.join(", ")}`)
   .requiredOption("--key <key>", "Setting key to set")
   .requiredOption("--value <value>", "Value to set")
-  .action(run((options) => api.setSetting(options.key, options.value, device())));
+  .option("--no-verify", "Don't read the status back; print the app's reply as earlier versions did")
+  .action(run((options) => api.setSetting(options.key, options.value, device(), { verify: options.verify })));
 
 program
   .command("wireless-debug-info")

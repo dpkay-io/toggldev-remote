@@ -31,10 +31,12 @@ export function validateDeviceName(name: string): string {
  * TOGGLDEV_DEVICE (a name), then ~/.toggldev.
  */
 export function getConfigDir(device?: string): string {
-  if (device) return path.join(devicesRoot(), validateDeviceName(device));
+  const defaultDir = process.env.TOGGLDEV_CONFIG_DIR || path.join(os.homedir(), ".toggldev");
+  const named = (name: string) => (name === DEFAULT_DEVICE ? defaultDir : path.join(devicesRoot(), validateDeviceName(name)));
+  if (device) return named(device);
   if (process.env.TOGGLDEV_CONFIG_DIR) return process.env.TOGGLDEV_CONFIG_DIR;
-  if (process.env.TOGGLDEV_DEVICE) return path.join(devicesRoot(), validateDeviceName(process.env.TOGGLDEV_DEVICE));
-  return path.join(os.homedir(), ".toggldev");
+  if (process.env.TOGGLDEV_DEVICE) return named(process.env.TOGGLDEV_DEVICE);
+  return defaultDir;
 }
 
 export function getConfigPath(device?: string): string {
@@ -52,7 +54,7 @@ export function listDeviceNames(): string[] {
   if (!fs.existsSync(root)) return [];
   return fs
     .readdirSync(root)
-    .filter((n) => DEVICE_NAME.test(n) && fs.existsSync(path.join(root, n, "config.json")))
+    .filter((n) => n !== DEFAULT_DEVICE && DEVICE_NAME.test(n) && fs.existsSync(path.join(root, n, "config.json")))
     .sort();
 }
 
@@ -94,6 +96,11 @@ export function saveConfig(config: Config, device?: string) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const p = getConfigPath(device);
   const tmp = `${p}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(config, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, p);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(config, null, 2), { mode: 0o600 });
+    fs.renameSync(tmp, p);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
 }

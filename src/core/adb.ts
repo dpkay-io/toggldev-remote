@@ -136,6 +136,7 @@ export async function connectAdb(device?: string, options: ConnectOptions = {}):
         const out = await runAdb(["connect", serial], 15000);
         if (!/^(already )?connected to/m.test(out.stdout)) continue;
         lastState = await deviceState(serial);
+        if (lastState !== "device" && lastState !== "unauthorized") await runAdb(["disconnect", serial]); // stale entry
         if (lastState === "device") return { serial, ip: info.ip, port, source, warnings };
         if (lastState === "unauthorized") {
           await runAdb(["disconnect", serial]);
@@ -150,6 +151,11 @@ export async function connectAdb(device?: string, options: ConnectOptions = {}):
 
   if ((await api.getStatus(device)).adb_wifi_enabled !== true) {
     throw new Error("Wireless debugging did not stay on: Android reverted it. Check the phone for an approve-this-Wi-Fi prompt, then retry.");
+  }
+  if (/offline/i.test(lastState)) {
+    throw new Error(
+      "Wireless debugging is on and adb connected, but adb sees the phone as offline. The phone may be asleep or its wireless-debugging port may have just changed; retry in a moment."
+    );
   }
   throw new Error(
     `Wireless debugging is on but 'adb connect' did not succeed${lastState ? ` (last state: ${lastState})` : ""}${warnings.length ? ` ${warnings.join(" ")}` : ""}. ` +

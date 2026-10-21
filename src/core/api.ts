@@ -29,6 +29,12 @@ export interface RequestOptions {
 export interface VerifyOptions {
   /** How long to wait for /status to show the new value (default 3000ms). */
   verifyTimeoutMs?: number;
+  /** false: send the change and return the app's reply untouched, as versions before 1.1 did. Also TOGGLDEV_VERIFY=0. */
+  verify?: boolean;
+}
+
+function verificationOff(options: VerifyOptions): boolean {
+  return options.verify === false || process.env.TOGGLDEV_VERIFY === "0";
 }
 
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -72,14 +78,15 @@ function retryAfterSuffix(text: string): string {
 }
 
 export class TogglDevAPI {
-  /** fetch with a timeout and readable network errors. */
+  /** fetch with a timeout (covering the response body too) and readable network errors. */
   private async send(host: string, port: number, urlPath: string, init: RequestInit, options: RequestOptions = {}) {
     const timeoutMs = options.timeoutMs ?? requestTimeoutMs();
     try {
-      return await fetch(`http://${host}:${port}${urlPath}`, {
+      const response = await fetch(`http://${host}:${port}${urlPath}`, {
         ...init,
         signal: AbortSignal.timeout(timeoutMs)
       });
+      return { status: response.status, ok: response.ok, text: await response.text() };
     } catch (err: any) {
       throw describeNetworkError(host, port, err, timeoutMs);
     }
@@ -100,21 +107,21 @@ export class TogglDevAPI {
     }, options);
 
     if (response.status === 401) {
+      // the first sentence is the wording earlier versions used; scripts may match it
       throw new TogglDevError(
-        `Authentication failed for ${config.host}. A phone keeps only one pairing token, so this usually means it was paired again from another machine (or its pairing was reset). Pair again with a new code.`,
+        `Authentication failed. Token is invalid or expired. Please pair again. (${config.host}: a phone keeps only one pairing token, so this usually means it was paired again from another machine, or its pairing was reset.)`,
         "unauthorized"
       );
     }
 
-    const text = await response.text();
     if (!response.ok) {
-      throw new TogglDevError(`Request failed: ${response.status} ${text}`, "http");
+      throw new TogglDevError(`Request failed: ${response.status} ${response.text}`, "http");
     }
 
     try {
-      return JSON.parse(text);
+      return JSON.parse(response.text);
     } catch (e) {
-      return text;
+      return response.text;
     }
   }
 
@@ -143,7 +150,7 @@ export class TogglDevAPI {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code })
     });
-    const text = await response.text();
+    const text = response.text;
 
     if (response.status === 429) {
       throw new TogglDevError(`Pairing refused: too many attempts.${retryAfterSuffix(text)} Not retrying, so the lockout is not extended.`, "rate_limited");
@@ -197,6 +204,7 @@ export class TogglDevAPI {
     const config = loadConfig(device);
     const toggleKey = toToggleKey(key);
     const result = await this.apiRequest(config, "POST", `/toggle/${encodeURIComponent(toggleKey)}`, { enabled });
+    if (verificationOff(options)) return result;
     const statusKey = toStatusKey(toggleKey);
 
     let check;
@@ -226,6 +234,7 @@ export class TogglDevAPI {
     let parsedValue: any = value;
     try { parsedValue = JSON.parse(value); } catch (e) {}
     const result = await this.apiRequest(config, "POST", `/set/${encodeURIComponent(key)}`, { value: parsedValue });
+    if (verificationOff(options)) return result;
 
     let check;
     try {

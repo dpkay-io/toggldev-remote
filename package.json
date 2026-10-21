@@ -15,6 +15,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build && npm test",
     "start": "node build/mcp/index.js",
     "cli": "node build/cli/index.js",
     "test": "vitest run",
